@@ -37,6 +37,32 @@
             Mindestdauer (Stunden)
             <input id="minDuration" type="number" min="0.1" step="0.1" />
           </label>
+
+          <label>
+            Slots anzeigen ab
+            <select id="slotFilterMin">
+              <option value="0.5">0.5 h</option>
+              <option value="1" selected>1 h</option>
+              <option value="2">2 h</option>
+              <option value="3">3 h</option>
+            </select>
+          </label>
+
+          <label>
+            Sortierung
+            <select id="sortMode">
+              <option value="chronological">Chronologisch</option>
+              <option value="length">Länge (absteigend)</option>
+            </select>
+          </label>
+
+          <label>
+            Ansicht
+            <select id="viewMode">
+              <option value="list">Liste</option>
+              <option value="timeline">Mini-Timeline</option>
+            </select>
+          </label>
         </div>
 
         <div class="button-row">
@@ -46,16 +72,44 @@
         </div>
       </section>
 
+      <section class="card collapsible-card">
+        <button id="toggleWorkByDay" class="collapse-toggle" type="button">▶ Arbeitszeiten pro Tag</button>
+        <div id="workByDayPanel" class="collapsed">
+          <p class="hint">Optional: Tagesbezogene Zeiten überschreiben das globale Fenster nur für den gewählten Tag.</p>
+          <div id="dailyWorkRows" class="daily-work-rows"></div>
+        </div>
+      </section>
+
       <section class="card">
         <h2>Feste wiederkehrende Termine</h2>
-        <p class="hint">Genau 5 Zeilen, jede Woche wiederkehrend.</p>
+        <p class="hint">Nur befüllte Zeilen werden angezeigt. Neue Zeile über „+ Hinzufügen“.</p>
+        <div class="button-row compact">
+          <button id="addRecurringBtn" class="secondary" type="button">+ Hinzufügen</button>
+        </div>
         <div id="recurringRows" class="rows"></div>
       </section>
 
       <section class="card">
         <h2>Variable Termine (aktuelle Woche)</h2>
-        <p class="hint">Genau 10 Zeilen, gelten nur für die ausgewählte Woche.</p>
+        <p class="hint">Nur befüllte Zeilen werden angezeigt. Neue Zeile über „+ Hinzufügen“.</p>
+        <div class="button-row compact">
+          <button id="addVariableBtn" class="secondary" type="button">+ Hinzufügen</button>
+        </div>
         <div id="variableRows" class="rows"></div>
+      </section>
+
+      <section class="card">
+        <h2>Aufgabe einplanen</h2>
+        <div class="grid task-grid">
+          <label>
+            Aufgabendauer (Stunden)
+            <input id="taskDuration" type="number" min="0.5" step="0.5" value="2" />
+          </label>
+          <div class="button-row compact">
+            <button id="findTaskBtn" type="button">Slot finden</button>
+          </div>
+        </div>
+        <p id="taskFeedback" class="task-feedback"></p>
       </section>
 
       <section class="card">
@@ -63,9 +117,9 @@
         <ul id="errors" class="errors"></ul>
       </section>
 
-      <section class="card">
+      <section id="resultsSection" class="card">
         <h2>Freie Zeitfenster diese Woche</h2>
-        <div id="summary" class="summary"></div>
+        <div id="summary" class="summary sticky-summary"></div>
         <div id="results" class="results"></div>
       </section>
     </main>
@@ -101,9 +155,44 @@
           Label (optional)
           <input data-field="label" type="text" maxlength="50" placeholder="z. B. Meeting" />
         </label>
+        <button data-field="remove" type="button" class="ghost-btn">Entfernen</button>
         <p class="row-error" data-row-error></p>
       </div>
     </template>
+
+    <dialog id="slotDialog">
+      <form id="slotDialogForm" method="dialog" class="dialog-form">
+        <h3>Slot als variablen Termin übernehmen</h3>
+        <label>
+          Wochentag
+          <select id="dialogDay">
+            <option value="1">Mo</option>
+            <option value="2">Di</option>
+            <option value="3">Mi</option>
+            <option value="4">Do</option>
+            <option value="5">Fr</option>
+            <option value="6">Sa</option>
+            <option value="0">So</option>
+          </select>
+        </label>
+        <label>
+          Start
+          <input id="dialogStart" type="time" step="60" />
+        </label>
+        <label>
+          Ende
+          <input id="dialogEnd" type="time" step="60" />
+        </label>
+        <label>
+          Label
+          <input id="dialogLabel" type="text" maxlength="50" placeholder="z. B. Fokusblock" />
+        </label>
+        <menu class="button-row compact">
+          <button type="reset" value="cancel" class="secondary">Abbrechen</button>
+          <button id="saveDialogBtn" type="submit">Übernehmen</button>
+        </menu>
+      </form>
+    </dialog>
 
     <script src="app.js"></script>
   </body>
