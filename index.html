@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Freie Zeitfenster Rechner</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Freie Zeitfenster pro Woche</h1>
+        <p class="subtitle">
+          Plane Arbeitszeit, feste Termine und variable Termine, um freie Slots zu berechnen.
+        </p>
+      </header>
+
+      <section class="card">
+        <h2>Globale Einstellungen</h2>
+        <div class="grid settings-grid">
+          <label>
+            Woche (Datum innerhalb der Woche)
+            <input id="weekDate" type="date" />
+          </label>
+
+          <label>
+            Arbeitszeit von
+            <input id="workStart" type="time" step="60" />
+          </label>
+
+          <label>
+            Arbeitszeit bis
+            <input id="workEnd" type="time" step="60" />
+          </label>
+
+          <label>
+            Mindestdauer (Stunden)
+            <input id="minDuration" type="number" min="0.1" step="0.1" />
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button id="computeBtn" type="button">Freie Zeitfenster berechnen</button>
+          <button id="resetBtn" type="button" class="secondary">Auf Standard zurücksetzen</button>
+          <button id="clearStorageBtn" type="button" class="danger">Lokale Daten löschen</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Feste wiederkehrende Termine</h2>
+        <p class="hint">Genau 5 Zeilen, jede Woche wiederkehrend.</p>
+        <div id="recurringRows" class="rows"></div>
+      </section>
+
+      <section class="card">
+        <h2>Variable Termine (aktuelle Woche)</h2>
+        <p class="hint">Genau 10 Zeilen, gelten nur für die ausgewählte Woche.</p>
+        <div id="variableRows" class="rows"></div>
+      </section>
+
+      <section class="card">
+        <h2>Hinweise & Fehler</h2>
+        <ul id="errors" class="errors"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Freie Zeitfenster diese Woche</h2>
+        <div id="summary" class="summary"></div>
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+
+    <template id="rowTemplate">
+      <div class="row" data-row>
+        <label class="checkbox-label">
+          <input data-field="active" type="checkbox" />
+          Aktiv
+        </label>
+        <label>
+          Wochentag
+          <select data-field="day">
+            <option value="">-</option>
+            <option value="1">Mo</option>
+            <option value="2">Di</option>
+            <option value="3">Mi</option>
+            <option value="4">Do</option>
+            <option value="5">Fr</option>
+            <option value="6">Sa</option>
+            <option value="0">So</option>
+          </select>
+        </label>
+        <label>
+          Start
+          <input data-field="start" type="time" step="60" />
+        </label>
+        <label>
+          Ende
+          <input data-field="end" type="time" step="60" />
+        </label>
+        <label class="label-field optional-field">
+          Label (optional)
+          <input data-field="label" type="text" maxlength="50" placeholder="z. B. Meeting" />
+        </label>
+        <p class="row-error" data-row-error></p>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
