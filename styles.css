@@ -9,6 +9,7 @@
   --accent: #1e6ee7;
   --danger: #c03a2b;
   --ok: #1f8a3a;
+  --warn: #f8dd7b;
 }
 
 * {
@@ -53,7 +54,12 @@ h3 {
 }
 
 .settings-grid {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.task-grid {
+  grid-template-columns: 1fr auto;
+  align-items: end;
 }
 
 label {
@@ -89,6 +95,10 @@ select.error {
   gap: 0.6rem;
 }
 
+.button-row.compact {
+  margin-top: 0;
+}
+
 button {
   border: 1px solid transparent;
   border-radius: 6px;
@@ -106,6 +116,12 @@ button.danger {
   background: var(--danger);
 }
 
+button.ghost-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #3d4d69;
+}
+
 .rows {
   display: grid;
   gap: 0.7rem;
@@ -117,7 +133,7 @@ button.danger {
   padding: 0.75rem;
   display: grid;
   gap: 0.6rem;
-  grid-template-columns: 110px repeat(4, minmax(120px, 1fr));
+  grid-template-columns: 100px repeat(4, minmax(120px, 1fr)) auto;
   align-items: end;
 }
 
@@ -152,9 +168,25 @@ button.danger {
   margin-left: -1.2rem;
 }
 
+.task-feedback {
+  margin: 0.8rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-left: 4px solid var(--accent);
+  background: #edf4ff;
+}
+
 .summary {
   margin-bottom: 1rem;
   font-weight: bold;
+}
+
+.sticky-summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .results {
@@ -173,6 +205,82 @@ button.danger {
   padding-left: 1.2rem;
 }
 
+.slot-btn {
+  border: 1px solid var(--border);
+  background: #f8faff;
+  color: var(--text);
+  width: 100%;
+  text-align: left;
+}
+
+.slot-btn.highlight {
+  background: var(--warn);
+  border-color: #b28a00;
+}
+
+.timeline {
+  position: relative;
+  height: 16px;
+  border-radius: 8px;
+  background: #d9f2dd;
+  margin: 0.5rem 0 0.7rem;
+  overflow: hidden;
+}
+
+.timeline-busy {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #f29a9a;
+}
+
+.collapsible-card {
+  padding-top: 0.8rem;
+}
+
+.collapse-toggle {
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  border: none;
+  font-weight: bold;
+}
+
+#workByDayPanel.collapsed {
+  display: none;
+}
+
+.daily-work-rows {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.daily-global-toggle {
+  font-weight: bold;
+}
+
+.daily-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  display: grid;
+  grid-template-columns: 200px 1fr 1fr;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 420px;
+}
+
+.dialog-form {
+  display: grid;
+  gap: 0.7rem;
+}
+
 @media (max-width: 860px) {
   .row {
     grid-template-columns: 1fr 1fr;
@@ -180,5 +288,13 @@ button.danger {
 
   .optional-field {
     grid-column: 1 / -1;
+  }
+
+  .daily-row {
+    grid-template-columns: 1fr;
+  }
+
+  .task-grid {
+    grid-template-columns: 1fr;
   }
 }

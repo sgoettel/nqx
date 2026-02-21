@@ -4,16 +4,16 @@
   - Uses localStorage for persistence
 */
 
-const STORAGE_KEY = "free-time-weekly-v1";
+const STORAGE_KEY = "free-time-weekly-v2";
 
 const DAY_OPTIONS = [
-  { value: 1, label: "Montag" },
-  { value: 2, label: "Dienstag" },
-  { value: 3, label: "Mittwoch" },
-  { value: 4, label: "Donnerstag" },
-  { value: 5, label: "Freitag" },
-  { value: 6, label: "Samstag" },
-  { value: 0, label: "Sonntag" },
+  { value: 1, short: "Mo", label: "Montag" },
+  { value: 2, short: "Di", label: "Dienstag" },
+  { value: 3, short: "Mi", label: "Mittwoch" },
+  { value: 4, short: "Do", label: "Donnerstag" },
+  { value: 5, short: "Fr", label: "Freitag" },
+  { value: 6, short: "Sa", label: "Samstag" },
+  { value: 0, short: "So", label: "Sonntag" },
 ];
 
 const DEFAULT_STATE = {
@@ -21,40 +21,63 @@ const DEFAULT_STATE = {
     weekDate: getTodayIsoDate(),
     workStart: "07:00",
     workEnd: "18:00",
-    minDurationHours: 1.0,
+    minDurationHours: 1,
+    filterMinHours: 1,
+    sortMode: "chronological",
+    viewMode: "list",
+    taskDurationHours: 2,
+  },
+  workByDay: {
+    enabled: false,
+    days: DAY_OPTIONS.reduce((acc, day) => {
+      acc[day.value] = { active: false, start: "", end: "" };
+      return acc;
+    }, {}),
   },
   recurring: [
     { active: true, day: "1", start: "10:30", end: "12:30", label: "" },
     { active: true, day: "2", start: "08:30", end: "10:30", label: "" },
-    { active: true, day: "2", start: "13:00", end: "15:00", label: "" },
-    { active: false, day: "", start: "", end: "", label: "" },
-    { active: false, day: "", start: "", end: "", label: "" },
   ],
-  variable: Array.from({ length: 10 }, () => ({
-    active: false,
-    day: "",
-    start: "",
-    end: "",
-    label: "",
-  })),
+  variable: [],
 };
 
 let state = structuredClone(DEFAULT_STATE);
+let lastComputation = null;
+let highlightedSlots = new Set();
+let pendingSlot = null;
 
 const el = {
   weekDate: document.querySelector("#weekDate"),
   workStart: document.querySelector("#workStart"),
   workEnd: document.querySelector("#workEnd"),
   minDuration: document.querySelector("#minDuration"),
+  slotFilterMin: document.querySelector("#slotFilterMin"),
+  sortMode: document.querySelector("#sortMode"),
+  viewMode: document.querySelector("#viewMode"),
+  taskDuration: document.querySelector("#taskDuration"),
+  taskFeedback: document.querySelector("#taskFeedback"),
   computeBtn: document.querySelector("#computeBtn"),
+  findTaskBtn: document.querySelector("#findTaskBtn"),
   resetBtn: document.querySelector("#resetBtn"),
   clearStorageBtn: document.querySelector("#clearStorageBtn"),
+  addRecurringBtn: document.querySelector("#addRecurringBtn"),
+  addVariableBtn: document.querySelector("#addVariableBtn"),
+  toggleWorkByDay: document.querySelector("#toggleWorkByDay"),
+  workByDayPanel: document.querySelector("#workByDayPanel"),
+  dailyWorkRows: document.querySelector("#dailyWorkRows"),
   recurringRows: document.querySelector("#recurringRows"),
   variableRows: document.querySelector("#variableRows"),
   template: document.querySelector("#rowTemplate"),
   errors: document.querySelector("#errors"),
   summary: document.querySelector("#summary"),
   results: document.querySelector("#results"),
+  resultsSection: document.querySelector("#resultsSection"),
+  slotDialog: document.querySelector("#slotDialog"),
+  slotDialogForm: document.querySelector("#slotDialogForm"),
+  dialogDay: document.querySelector("#dialogDay"),
+  dialogStart: document.querySelector("#dialogStart"),
+  dialogEnd: document.querySelector("#dialogEnd"),
+  dialogLabel: document.querySelector("#dialogLabel"),
 };
 
 init();
@@ -62,10 +85,11 @@ init();
 function init() {
   state = loadState();
   bindSettings();
-  renderRows("recurring", 5, true);
-  renderRows("variable", 10, false);
   bindButtons();
-  computeAndRender();
+  renderDailyWorkRows();
+  renderRows("recurring");
+  renderRows("variable");
+  computeAndRender({ scrollToResults: false });
 }
 
 function bindSettings() {
@@ -73,64 +97,183 @@ function bindSettings() {
   el.workStart.value = state.settings.workStart;
   el.workEnd.value = state.settings.workEnd;
   el.minDuration.value = Number(state.settings.minDurationHours).toFixed(1);
+  el.slotFilterMin.value = String(state.settings.filterMinHours || 1);
+  el.sortMode.value = state.settings.sortMode;
+  el.viewMode.value = state.settings.viewMode;
+  el.taskDuration.value = Number(state.settings.taskDurationHours || 2).toFixed(1);
 
-  el.weekDate.addEventListener("change", saveSettingsFromUI);
-  el.workStart.addEventListener("change", saveSettingsFromUI);
-  el.workEnd.addEventListener("change", saveSettingsFromUI);
-  el.minDuration.addEventListener("change", saveSettingsFromUI);
+  [
+    el.weekDate,
+    el.workStart,
+    el.workEnd,
+    el.minDuration,
+    el.slotFilterMin,
+    el.sortMode,
+    el.viewMode,
+    el.taskDuration,
+  ].forEach((input) => {
+    input.addEventListener("change", () => {
+      saveSettingsFromUI();
+      if (input === el.viewMode || input === el.sortMode || input === el.slotFilterMin) {
+        computeAndRender({ scrollToResults: false });
+      }
+    });
+  });
 }
 
 function bindButtons() {
-  el.computeBtn.addEventListener("click", computeAndRender);
+  el.computeBtn.addEventListener("click", () => computeAndRender({ scrollToResults: true }));
+  el.findTaskBtn.addEventListener("click", findTaskSlot);
 
   el.resetBtn.addEventListener("click", () => {
     resetToDefaults();
-    computeAndRender();
+    computeAndRender({ scrollToResults: false });
   });
 
   el.clearStorageBtn.addEventListener("click", () => {
     localStorage.removeItem(STORAGE_KEY);
     resetToDefaults();
-    computeAndRender();
+    computeAndRender({ scrollToResults: false });
+  });
+
+  el.addRecurringBtn.addEventListener("click", () => {
+    state.recurring.push(createBlankRow());
+    saveState(state);
+    renderRows("recurring");
+  });
+
+  el.addVariableBtn.addEventListener("click", () => {
+    state.variable.push(createBlankRow());
+    saveState(state);
+    renderRows("variable");
+  });
+
+  el.toggleWorkByDay.addEventListener("click", () => {
+    const wasCollapsed = el.workByDayPanel.classList.contains("collapsed");
+    el.workByDayPanel.classList.toggle("collapsed");
+    el.toggleWorkByDay.textContent = `${wasCollapsed ? "▼" : "▶"} Arbeitszeiten pro Tag`;
+  });
+
+  el.slotDialogForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveSlotFromDialog();
+  });
+
+  el.slotDialogForm.addEventListener("reset", () => {
+    el.slotDialog.close();
   });
 }
 
-function renderRows(type, count, includeLabel) {
+function createBlankRow() {
+  return { active: false, day: "", start: "", end: "", label: "" };
+}
+
+function isRowFilled(row) {
+  return Boolean(row.active || row.day || row.start || row.end || row.label);
+}
+
+function renderRows(type) {
   const target = type === "recurring" ? el.recurringRows : el.variableRows;
   target.innerHTML = "";
 
-  for (let i = 0; i < count; i += 1) {
-    const rowData = state[type][i];
+  const visibleRows = state[type]
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => isRowFilled(row));
+
+  if (!visibleRows.length) {
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = "Noch keine Einträge.";
+    target.appendChild(hint);
+    return;
+  }
+
+  visibleRows.forEach(({ row, index }) => {
     const node = el.template.content.firstElementChild.cloneNode(true);
     node.dataset.type = type;
-    node.dataset.index = String(i);
+    node.dataset.index = String(index);
 
     const activeInput = node.querySelector('[data-field="active"]');
     const dayInput = node.querySelector('[data-field="day"]');
     const startInput = node.querySelector('[data-field="start"]');
     const endInput = node.querySelector('[data-field="end"]');
     const labelInput = node.querySelector('[data-field="label"]');
+    const removeBtn = node.querySelector('[data-field="remove"]');
 
-    activeInput.checked = Boolean(rowData.active);
-    dayInput.value = rowData.day;
-    startInput.value = rowData.start;
-    endInput.value = rowData.end;
-    labelInput.value = rowData.label || "";
-
-    if (!includeLabel) {
-      labelInput.closest("label").remove();
-    }
+    activeInput.checked = Boolean(row.active);
+    dayInput.value = row.day;
+    startInput.value = row.start;
+    endInput.value = row.end;
+    labelInput.value = row.label || "";
 
     [activeInput, dayInput, startInput, endInput, labelInput].forEach((input) => {
-      if (!input) return;
       input.addEventListener("change", () => {
         updateRowStateFromNode(node);
         saveState(state);
       });
     });
 
+    removeBtn.addEventListener("click", () => {
+      state[type].splice(index, 1);
+      saveState(state);
+      renderRows(type);
+      computeAndRender({ scrollToResults: false });
+    });
+
     target.appendChild(node);
-  }
+  });
+}
+
+function renderDailyWorkRows() {
+  el.dailyWorkRows.innerHTML = "";
+
+  const globalToggle = document.createElement("label");
+  globalToggle.className = "daily-global-toggle";
+  globalToggle.innerHTML = `
+    <input id="useWorkByDay" type="checkbox" ${state.workByDay.enabled ? "checked" : ""} />
+    Tagesbezogene Arbeitszeiten aktivieren
+  `;
+  el.dailyWorkRows.appendChild(globalToggle);
+
+  globalToggle.querySelector("#useWorkByDay").addEventListener("change", (event) => {
+    state.workByDay.enabled = event.target.checked;
+    saveState(state);
+    computeAndRender({ scrollToResults: false });
+  });
+
+  DAY_OPTIONS.forEach((day) => {
+    const config = state.workByDay.days[day.value] || { active: false, start: "", end: "" };
+    const row = document.createElement("div");
+    row.className = "daily-row";
+    row.innerHTML = `
+      <label class="checkbox-label">
+        <input data-day-field="active" type="checkbox" ${config.active ? "checked" : ""} />
+        ${day.label}
+      </label>
+      <label>
+        Von
+        <input data-day-field="start" type="time" step="60" value="${config.start || ""}" />
+      </label>
+      <label>
+        Bis
+        <input data-day-field="end" type="time" step="60" value="${config.end || ""}" />
+      </label>
+    `;
+
+    row.querySelectorAll("[data-day-field]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const next = {
+          active: row.querySelector('[data-day-field="active"]').checked,
+          start: row.querySelector('[data-day-field="start"]').value,
+          end: row.querySelector('[data-day-field="end"]').value,
+        };
+        state.workByDay.days[day.value] = next;
+        saveState(state);
+      });
+    });
+
+    el.dailyWorkRows.appendChild(row);
+  });
 }
 
 function updateRowStateFromNode(rowNode) {
@@ -142,7 +285,7 @@ function updateRowStateFromNode(rowNode) {
     day: rowNode.querySelector('[data-field="day"]').value,
     start: rowNode.querySelector('[data-field="start"]').value,
     end: rowNode.querySelector('[data-field="end"]').value,
-    label: rowNode.querySelector('[data-field="label"]')?.value || "",
+    label: rowNode.querySelector('[data-field="label"]').value || "",
   };
 }
 
@@ -151,22 +294,50 @@ function saveSettingsFromUI() {
   state.settings.workStart = el.workStart.value;
   state.settings.workEnd = el.workEnd.value;
   state.settings.minDurationHours = Number(el.minDuration.value);
+  state.settings.filterMinHours = Number(el.slotFilterMin.value);
+  state.settings.sortMode = el.sortMode.value;
+  state.settings.viewMode = el.viewMode.value;
+  state.settings.taskDurationHours = Number(el.taskDuration.value);
   saveState(state);
 }
 
-function computeAndRender() {
+function getWorkWindowForDay(dayValue, globalStart, globalEnd, errors) {
+  if (!state.workByDay.enabled) {
+    return { start: globalStart, end: globalEnd };
+  }
+
+  const dayConfig = state.workByDay.days[dayValue];
+  if (!dayConfig?.active) {
+    return { start: globalStart, end: globalEnd };
+  }
+
+  const start = parseTimeToMinutes(dayConfig.start);
+  const end = parseTimeToMinutes(dayConfig.end);
+
+  if (start == null || end == null || start >= end) {
+    const dayLabel = DAY_OPTIONS.find((day) => day.value === dayValue)?.label || "Tag";
+    errors.push(`${dayLabel}: Tages-Arbeitszeit ist ungültig.`);
+    return { start: globalStart, end: globalEnd };
+  }
+
+  return { start, end };
+}
+
+function computeAndRender({ scrollToResults }) {
   saveSettingsFromUI();
   clearValidationStyles();
+  highlightedSlots = new Set();
+  el.taskFeedback.textContent = "";
 
   const errors = [];
-
-  const workStart = parseTimeToMinutes(state.settings.workStart);
-  const workEnd = parseTimeToMinutes(state.settings.workEnd);
+  const globalWorkStart = parseTimeToMinutes(state.settings.workStart);
+  const globalWorkEnd = parseTimeToMinutes(state.settings.workEnd);
   const minDurationMinutes = Math.round(Number(state.settings.minDurationHours) * 60);
+  const filterMinMinutes = Math.round(Number(state.settings.filterMinHours) * 60);
 
-  if (workStart == null || workEnd == null) {
+  if (globalWorkStart == null || globalWorkEnd == null) {
     errors.push("Arbeitszeit muss im Format HH:MM gesetzt sein.");
-  } else if (workStart >= workEnd) {
+  } else if (globalWorkStart >= globalWorkEnd) {
     errors.push("Arbeitszeit von muss früher als bis sein.");
     markInputError(el.workStart);
     markInputError(el.workEnd);
@@ -183,15 +354,13 @@ function computeAndRender() {
     markInputError(el.weekDate);
   }
 
-  const recurringValidation = collectValidatedRows("recurring", workStart, workEnd);
-  const variableValidation = collectValidatedRows("variable", workStart, workEnd);
+  const recurringValidation = collectValidatedRows("recurring", globalWorkStart, globalWorkEnd);
+  const variableValidation = collectValidatedRows("variable", globalWorkStart, globalWorkEnd);
 
   errors.push(...recurringValidation.errors, ...variableValidation.errors);
   renderErrors(errors);
 
-  if (
-    errors.some((msg) => msg.includes("Arbeitszeit") || msg.includes("Mindestdauer") || msg.includes("Datum"))
-  ) {
+  if (errors.some((msg) => msg.includes("Arbeitszeit") || msg.includes("Mindestdauer") || msg.includes("Datum"))) {
     el.summary.textContent = "Keine Berechnung wegen globaler Fehler.";
     el.results.innerHTML = "";
     return;
@@ -200,17 +369,28 @@ function computeAndRender() {
   const dayResults = [];
   let totalFreeMinutes = 0;
   let totalSlots = 0;
+  let longestSlotMinutes = 0;
 
   DAY_OPTIONS.forEach((day) => {
+    const workWindow = getWorkWindowForDay(day.value, globalWorkStart, globalWorkEnd, errors);
+
     const busy = [
       ...recurringValidation.rows.filter((r) => r.day === day.value),
       ...variableValidation.rows.filter((r) => r.day === day.value),
     ].map((r) => ({ start: r.startMinutes, end: r.endMinutes }));
 
     const mergedBusy = mergeIntervals(busy);
-    const freeIntervals = computeFreeIntervals(workStart, workEnd, mergedBusy).filter(
-      (slot) => slot.end - slot.start >= minDurationMinutes,
+    let freeIntervals = computeFreeIntervals(workWindow.start, workWindow.end, mergedBusy).filter(
+      (slot) => slot.end - slot.start >= Math.max(minDurationMinutes, filterMinMinutes),
     );
+
+    if (state.settings.sortMode === "length") {
+      freeIntervals = [...freeIntervals].sort((a, b) => b.end - b.start - (a.end - a.start));
+    }
+
+    freeIntervals.forEach((slot) => {
+      longestSlotMinutes = Math.max(longestSlotMinutes, slot.end - slot.start);
+    });
 
     const freeMinutesForDay = freeIntervals.reduce((sum, slot) => sum + (slot.end - slot.start), 0);
     totalFreeMinutes += freeMinutesForDay;
@@ -219,11 +399,28 @@ function computeAndRender() {
     dayResults.push({
       day,
       date: weekDays.find((d) => d.dayValue === day.value)?.date,
+      workWindow,
+      busyIntervals: mergedBusy,
       freeIntervals,
     });
   });
 
-  renderResults(dayResults, totalFreeMinutes, totalSlots);
+  if (errors.length) {
+    renderErrors(errors);
+  }
+
+  lastComputation = {
+    dayResults,
+    totalFreeMinutes,
+    totalSlots,
+    longestSlotMinutes,
+  };
+
+  renderResults(lastComputation);
+
+  if (scrollToResults) {
+    el.resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function collectValidatedRows(type, workStart, workEnd) {
@@ -231,7 +428,8 @@ function collectValidatedRows(type, workStart, workEnd) {
   const errors = [];
   const rowNodes = [...document.querySelectorAll(`.row[data-type="${type}"]`)];
 
-  rowNodes.forEach((node, index) => {
+  rowNodes.forEach((node, visibleIndex) => {
+    const index = Number(node.dataset.index);
     const row = state[type][index];
     const validation = validateRow(row, workStart, workEnd);
 
@@ -239,7 +437,7 @@ function collectValidatedRows(type, workStart, workEnd) {
     rowError.textContent = validation.error || "";
 
     if (validation.error) {
-      errors.push(`${type === "recurring" ? "Fester" : "Variabler"} Termin ${index + 1}: ${validation.error}`);
+      errors.push(`${type === "recurring" ? "Fester" : "Variabler"} Termin ${visibleIndex + 1}: ${validation.error}`);
       markRowInputs(node, validation.invalidFields);
       return;
     }
@@ -253,6 +451,10 @@ function collectValidatedRows(type, workStart, workEnd) {
 }
 
 function validateRow(row, workStart, workEnd) {
+  if (!row || !isRowFilled(row)) {
+    return { normalized: null };
+  }
+
   if (!row.active) {
     return { normalized: null };
   }
@@ -294,6 +496,181 @@ function validateRow(row, workStart, workEnd) {
       label: row.label || "",
     },
   };
+}
+
+function findTaskSlot() {
+  if (!lastComputation) {
+    el.taskFeedback.textContent = "Bitte zuerst berechnen.";
+    return;
+  }
+
+  const taskMinutes = Math.round(Number(el.taskDuration.value) * 60);
+  if (!Number.isFinite(taskMinutes) || taskMinutes <= 0) {
+    el.taskFeedback.textContent = "Aufgabendauer muss größer als 0 sein.";
+    markInputError(el.taskDuration);
+    return;
+  }
+
+  saveSettingsFromUI();
+
+  const allSlots = [];
+  lastComputation.dayResults.forEach((entry) => {
+    entry.freeIntervals.forEach((slot) => {
+      allSlots.push({
+        day: entry.day,
+        date: entry.date,
+        start: slot.start,
+        end: slot.end,
+        duration: slot.end - slot.start,
+      });
+    });
+  });
+
+  const single = allSlots.find((slot) => slot.duration >= taskMinutes);
+  if (single) {
+    highlightedSlots = new Set([slotKey(single.day.value, single.start, single.end)]);
+    renderResults(lastComputation);
+    el.taskFeedback.textContent = `Passender Slot gefunden: ${formatDuration(taskMinutes)} am ${single.day.label} (${formatMinutesToTime(single.start)}–${formatMinutesToTime(single.end)}).`;
+    return;
+  }
+
+  const sorted = [...allSlots].sort((a, b) => b.duration - a.duration);
+  const picks = [];
+  let remaining = taskMinutes;
+
+  for (const slot of sorted) {
+    if (remaining <= 0) break;
+    picks.push(slot);
+    remaining -= slot.duration;
+  }
+
+  if (remaining > 0) {
+    highlightedSlots = new Set();
+    renderResults(lastComputation);
+    el.taskFeedback.textContent = "Kein passender Slot gefunden – auch keine sinnvolle Aufteilung möglich.";
+    return;
+  }
+
+  highlightedSlots = new Set(picks.map((slot) => slotKey(slot.day.value, slot.start, slot.end)));
+  renderResults(lastComputation);
+
+  const phrase = picks
+    .slice(0, 3)
+    .map((slot) => `${formatDuration(slot.duration)} am ${slot.day.label}`)
+    .join(" und ");
+  el.taskFeedback.textContent = `Kein einzelner Slot gefunden, aber möglich: ${phrase}.`;
+}
+
+function renderResults(data) {
+  el.summary.textContent = `Slots: ${data.totalSlots} • Gesamtfrei: ${formatDuration(data.totalFreeMinutes)} • Längster Slot: ${formatDuration(data.longestSlotMinutes)}`;
+  el.results.innerHTML = "";
+
+  data.dayResults.forEach((entry) => {
+    const box = document.createElement("article");
+    box.className = "result-day";
+
+    const title = document.createElement("h3");
+    title.textContent = `${entry.day.label} (${entry.date || "-"})`;
+    box.appendChild(title);
+
+    if (state.settings.viewMode === "timeline") {
+      box.appendChild(renderTimeline(entry));
+    }
+
+    if (!entry.freeIntervals.length) {
+      const noData = document.createElement("p");
+      noData.textContent = "Kein freies Zeitfenster (>= Filter/Mindestdauer).";
+      box.appendChild(noData);
+    } else {
+      const list = document.createElement("ul");
+
+      entry.freeIntervals.forEach((slot, idx) => {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        const duration = slot.end - slot.start;
+        const key = slotKey(entry.day.value, slot.start, slot.end);
+
+        button.type = "button";
+        button.className = `slot-btn ${highlightedSlots.has(key) ? "highlight" : ""}`;
+        button.textContent = `${idx + 1}. ${formatMinutesToTime(slot.start)}–${formatMinutesToTime(slot.end)} (${formatDuration(duration)})`;
+        button.addEventListener("click", () => openSlotDialog(entry, slot));
+
+        li.appendChild(button);
+        list.appendChild(li);
+      });
+
+      box.appendChild(list);
+    }
+
+    el.results.appendChild(box);
+  });
+}
+
+function renderTimeline(entry) {
+  const timeline = document.createElement("div");
+  timeline.className = "timeline";
+
+  const total = entry.workWindow.end - entry.workWindow.start;
+  if (total <= 0) {
+    timeline.textContent = "Keine gültige Arbeitszeit.";
+    return timeline;
+  }
+
+  const busySegments = mergeIntervals(entry.busyIntervals).map((busy) => ({
+    left: ((busy.start - entry.workWindow.start) / total) * 100,
+    width: ((busy.end - busy.start) / total) * 100,
+  }));
+
+  busySegments.forEach((segment) => {
+    const block = document.createElement("span");
+    block.className = "timeline-busy";
+    block.style.left = `${Math.max(0, segment.left)}%`;
+    block.style.width = `${Math.max(0, segment.width)}%`;
+    timeline.appendChild(block);
+  });
+
+  return timeline;
+}
+
+function openSlotDialog(entry, slot) {
+  pendingSlot = { entry, slot };
+  el.dialogDay.value = String(entry.day.value);
+  el.dialogStart.value = formatMinutesToTime(slot.start);
+  el.dialogEnd.value = formatMinutesToTime(slot.end);
+  el.dialogLabel.value = "";
+  el.slotDialog.showModal();
+}
+
+function saveSlotFromDialog() {
+  if (!pendingSlot) return;
+
+  const newRow = {
+    active: true,
+    day: el.dialogDay.value,
+    start: el.dialogStart.value,
+    end: el.dialogEnd.value,
+    label: el.dialogLabel.value.trim(),
+  };
+
+  state.variable.push(newRow);
+  saveState(state);
+  renderRows("variable");
+  computeAndRender({ scrollToResults: false });
+  el.slotDialog.close();
+  pendingSlot = null;
+}
+
+function slotKey(day, start, end) {
+  return `${day}-${start}-${end}`;
+}
+
+function renderErrors(errorList) {
+  el.errors.innerHTML = "";
+  errorList.forEach((err) => {
+    const li = document.createElement("li");
+    li.textContent = err;
+    el.errors.appendChild(li);
+  });
 }
 
 function parseTimeToMinutes(timeText) {
@@ -383,45 +760,6 @@ function getWeekDays(inputDate) {
   return days;
 }
 
-function renderResults(dayResults, totalFreeMinutes, totalSlots) {
-  el.summary.textContent = `Gesamt: ${totalSlots} freie Slots, ${formatDuration(totalFreeMinutes)} freie Zeit in der Woche.`;
-  el.results.innerHTML = "";
-
-  dayResults.forEach((entry) => {
-    const box = document.createElement("article");
-    box.className = "result-day";
-
-    const title = document.createElement("h3");
-    title.textContent = `${entry.day.label} (${entry.date || "-"})`;
-    box.appendChild(title);
-
-    if (!entry.freeIntervals.length) {
-      const noData = document.createElement("p");
-      noData.textContent = "Kein freies Zeitfenster (>= Mindestdauer).";
-      box.appendChild(noData);
-    } else {
-      const list = document.createElement("ul");
-      entry.freeIntervals.forEach((slot, idx) => {
-        const li = document.createElement("li");
-        li.textContent = `${idx + 1}. ${formatMinutesToTime(slot.start)}–${formatMinutesToTime(slot.end)}`;
-        list.appendChild(li);
-      });
-      box.appendChild(list);
-    }
-
-    el.results.appendChild(box);
-  });
-}
-
-function renderErrors(errorList) {
-  el.errors.innerHTML = "";
-  errorList.forEach((err) => {
-    const li = document.createElement("li");
-    li.textContent = err;
-    el.errors.appendChild(li);
-  });
-}
-
 function markRowInputs(node, fields) {
   fields.forEach((field) => {
     const input = node.querySelector(`[data-field="${field}"]`);
@@ -444,32 +782,8 @@ function saveState(nextState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 }
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return structuredClone(DEFAULT_STATE);
-    }
-
-    const parsed = JSON.parse(raw);
-    return {
-      settings: {
-        ...DEFAULT_STATE.settings,
-        ...(parsed.settings || {}),
-      },
-      recurring: normalizeRows(parsed.recurring, 5),
-      variable: normalizeRows(parsed.variable, 10),
-    };
-  } catch (error) {
-    return structuredClone(DEFAULT_STATE);
-  }
-}
-
-function normalizeRows(inputRows, count) {
-  const rows = Array.isArray(inputRows) ? inputRows.slice(0, count) : [];
-  while (rows.length < count) {
-    rows.push({ active: false, day: "", start: "", end: "", label: "" });
-  }
+function normalizeRows(inputRows) {
+  const rows = Array.isArray(inputRows) ? inputRows : [];
   return rows.map((row) => ({
     active: Boolean(row.active),
     day: row.day ?? "",
@@ -479,11 +793,64 @@ function normalizeRows(inputRows, count) {
   }));
 }
 
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return normalizeState(parsed);
+    }
+
+    // Migration support for the previous state key.
+    const legacyRaw = localStorage.getItem("free-time-weekly-v1");
+    if (legacyRaw) {
+      const parsedLegacy = JSON.parse(legacyRaw);
+      return normalizeState(parsedLegacy);
+    }
+
+    return structuredClone(DEFAULT_STATE);
+  } catch (error) {
+    return structuredClone(DEFAULT_STATE);
+  }
+}
+
+function normalizeState(input) {
+  const normalized = {
+    settings: {
+      ...DEFAULT_STATE.settings,
+      ...(input.settings || {}),
+    },
+    workByDay: {
+      enabled: Boolean(input.workByDay?.enabled),
+      days: DAY_OPTIONS.reduce((acc, day) => {
+        const row = input.workByDay?.days?.[day.value] || {};
+        acc[day.value] = {
+          active: Boolean(row.active),
+          start: row.start || "",
+          end: row.end || "",
+        };
+        return acc;
+      }, {}),
+    },
+    recurring: normalizeRows(input.recurring),
+    variable: normalizeRows(input.variable),
+  };
+
+  // Ensure at least one visible row per section if data is empty.
+  if (!normalized.recurring.length) normalized.recurring = [createBlankRow()];
+  if (!normalized.variable.length) normalized.variable = [createBlankRow()];
+
+  return normalized;
+}
+
 function resetToDefaults() {
   state = structuredClone(DEFAULT_STATE);
+  if (!state.recurring.length) state.recurring = [createBlankRow()];
+  if (!state.variable.length) state.variable = [createBlankRow()];
   bindSettings();
-  renderRows("recurring", 5, true);
-  renderRows("variable", 10, false);
+  renderDailyWorkRows();
+  renderRows("recurring");
+  renderRows("variable");
   saveState(state);
 }
 
