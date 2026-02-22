@@ -246,7 +246,11 @@ button.ghost-btn {
   font-weight: bold;
 }
 
-#workByDayPanel.collapsed {
+.collapse-toggle.nested {
+  margin-top: 1rem;
+}
+
+.collapsed {
   display: none;
 }
 
