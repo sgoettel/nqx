@@ -34,11 +34,8 @@ const DEFAULT_STATE = {
       return acc;
     }, {}),
   },
-  recurring: [
-    { active: true, day: "1", start: "10:30", end: "12:30", label: "" },
-    { active: true, day: "2", start: "08:30", end: "10:30", label: "" },
-  ],
-  variable: [],
+  recurring: [createBlankRow({ day: "1" })],
+  variable: [createBlankRow({ day: "1" })],
 };
 
 let state = structuredClone(DEFAULT_STATE);
@@ -60,8 +57,14 @@ const el = {
   findTaskBtn: document.querySelector("#findTaskBtn"),
   resetBtn: document.querySelector("#resetBtn"),
   clearStorageBtn: document.querySelector("#clearStorageBtn"),
+  toggleSettings: document.querySelector("#toggleSettings"),
+  settingsPanel: document.querySelector("#settingsPanel"),
   addRecurringBtn: document.querySelector("#addRecurringBtn"),
   addVariableBtn: document.querySelector("#addVariableBtn"),
+  toggleRecurring: document.querySelector("#toggleRecurring"),
+  recurringPanel: document.querySelector("#recurringPanel"),
+  toggleVariable: document.querySelector("#toggleVariable"),
+  variablePanel: document.querySelector("#variablePanel"),
   toggleWorkByDay: document.querySelector("#toggleWorkByDay"),
   workByDayPanel: document.querySelector("#workByDayPanel"),
   dailyWorkRows: document.querySelector("#dailyWorkRows"),
@@ -148,11 +151,10 @@ function bindButtons() {
     renderRows("variable");
   });
 
-  el.toggleWorkByDay.addEventListener("click", () => {
-    const wasCollapsed = el.workByDayPanel.classList.contains("collapsed");
-    el.workByDayPanel.classList.toggle("collapsed");
-    el.toggleWorkByDay.textContent = `${wasCollapsed ? "▼" : "▶"} Arbeitszeiten pro Tag`;
-  });
+  bindCollapsibleToggle(el.toggleSettings, el.settingsPanel, "Arbeitszeiten & globale Einstellungen", true);
+  bindCollapsibleToggle(el.toggleRecurring, el.recurringPanel, "Feste wiederkehrende Termine", true);
+  bindCollapsibleToggle(el.toggleVariable, el.variablePanel, "Variable Termine (aktuelle Woche)", true);
+  bindCollapsibleToggle(el.toggleWorkByDay, el.workByDayPanel, "Arbeitszeiten pro Tag", false);
 
   el.slotDialogForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -164,8 +166,21 @@ function bindButtons() {
   });
 }
 
-function createBlankRow() {
-  return { active: false, day: "", start: "", end: "", label: "" };
+function bindCollapsibleToggle(toggleButton, panel, label, expandedByDefault) {
+  if (!toggleButton || !panel) return;
+
+  panel.classList.toggle("collapsed", !expandedByDefault);
+  toggleButton.textContent = `${expandedByDefault ? "▼" : "▶"} ${label}`;
+
+  toggleButton.addEventListener("click", () => {
+    const isCollapsed = panel.classList.toggle("collapsed");
+    toggleButton.textContent = `${isCollapsed ? "▶" : "▼"} ${label}`;
+  });
+}
+
+function createBlankRow(overrides = {}) {
+  // New rows start with a weekday so they stay visible and editable right away.
+  return { active: false, day: "1", start: "", end: "", label: "", ...overrides };
 }
 
 function isRowFilled(row) {
@@ -534,20 +549,12 @@ function findTaskSlot() {
     return;
   }
 
-  const sorted = [...allSlots].sort((a, b) => b.duration - a.duration);
-  const picks = [];
-  let remaining = taskMinutes;
+  const picks = findBestSplit(allSlots, taskMinutes);
 
-  for (const slot of sorted) {
-    if (remaining <= 0) break;
-    picks.push(slot);
-    remaining -= slot.duration;
-  }
-
-  if (remaining > 0) {
+  if (!picks) {
     highlightedSlots = new Set();
     renderResults(lastComputation);
-    el.taskFeedback.textContent = "Kein passender Slot gefunden – auch keine sinnvolle Aufteilung möglich.";
+    el.taskFeedback.textContent = "Kein passender Slot gefunden – auch keine sinnvolle Aufteilung in 2–3 Slots möglich.";
     return;
   }
 
@@ -559,6 +566,39 @@ function findTaskSlot() {
     .map((slot) => `${formatDuration(slot.duration)} am ${slot.day.label}`)
     .join(" und ");
   el.taskFeedback.textContent = `Kein einzelner Slot gefunden, aber möglich: ${phrase}.`;
+}
+
+function findBestSplit(slots, taskMinutes) {
+  // Try to find a split of exactly 2 or 3 slots with minimal unused time.
+  const byTime = [...slots].sort((a, b) => {
+    if (a.day.value !== b.day.value) return a.day.value - b.day.value;
+    return a.start - b.start;
+  });
+
+  let best = null;
+
+  const consider = (selection) => {
+    const total = selection.reduce((sum, slot) => sum + slot.duration, 0);
+    if (total < taskMinutes) return;
+
+    const over = total - taskMinutes;
+    const candidate = { selection, over, total };
+
+    if (!best || candidate.over < best.over || (candidate.over === best.over && candidate.total < best.total)) {
+      best = candidate;
+    }
+  };
+
+  for (let i = 0; i < byTime.length; i += 1) {
+    for (let j = i + 1; j < byTime.length; j += 1) {
+      consider([byTime[i], byTime[j]]);
+      for (let k = j + 1; k < byTime.length; k += 1) {
+        consider([byTime[i], byTime[j], byTime[k]]);
+      }
+    }
+  }
+
+  return best?.selection || null;
 }
 
 function renderResults(data) {
@@ -837,16 +877,16 @@ function normalizeState(input) {
   };
 
   // Ensure at least one visible row per section if data is empty.
-  if (!normalized.recurring.length) normalized.recurring = [createBlankRow()];
-  if (!normalized.variable.length) normalized.variable = [createBlankRow()];
+  if (!normalized.recurring.length) normalized.recurring = [createBlankRow({ day: "1" })];
+  if (!normalized.variable.length) normalized.variable = [createBlankRow({ day: "1" })];
 
   return normalized;
 }
 
 function resetToDefaults() {
   state = structuredClone(DEFAULT_STATE);
-  if (!state.recurring.length) state.recurring = [createBlankRow()];
-  if (!state.variable.length) state.variable = [createBlankRow()];
+  if (!state.recurring.length) state.recurring = [createBlankRow({ day: "1" })];
+  if (!state.variable.length) state.variable = [createBlankRow({ day: "1" })];
   bindSettings();
   renderDailyWorkRows();
   renderRows("recurring");

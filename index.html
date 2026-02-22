@@ -15,9 +15,10 @@
         </p>
       </header>
 
-      <section class="card">
-        <h2>Globale Einstellungen</h2>
-        <div class="grid settings-grid">
+      <section class="card collapsible-card">
+        <button id="toggleSettings" class="collapse-toggle" type="button">▼ Arbeitszeiten & globale Einstellungen</button>
+        <div id="settingsPanel">
+          <div class="grid settings-grid">
           <label>
             Woche (Datum innerhalb der Woche)
             <input id="weekDate" type="date" />
@@ -63,39 +64,42 @@
               <option value="timeline">Mini-Timeline</option>
             </select>
           </label>
-        </div>
+          </div>
 
-        <div class="button-row">
-          <button id="computeBtn" type="button">Freie Zeitfenster berechnen</button>
-          <button id="resetBtn" type="button" class="secondary">Auf Standard zurücksetzen</button>
-          <button id="clearStorageBtn" type="button" class="danger">Lokale Daten löschen</button>
+          <div class="button-row">
+            <button id="computeBtn" type="button">Freie Zeitfenster berechnen</button>
+            <button id="resetBtn" type="button" class="secondary">Auf Standard zurücksetzen</button>
+            <button id="clearStorageBtn" type="button" class="danger">Lokale Daten löschen</button>
+          </div>
+
+          <button id="toggleWorkByDay" class="collapse-toggle nested" type="button">▶ Arbeitszeiten pro Tag</button>
+          <div id="workByDayPanel" class="collapsed">
+            <p class="hint">Optional: Tagesbezogene Zeiten überschreiben das globale Fenster nur für den gewählten Tag.</p>
+            <div id="dailyWorkRows" class="daily-work-rows"></div>
+          </div>
         </div>
       </section>
 
       <section class="card collapsible-card">
-        <button id="toggleWorkByDay" class="collapse-toggle" type="button">▶ Arbeitszeiten pro Tag</button>
-        <div id="workByDayPanel" class="collapsed">
-          <p class="hint">Optional: Tagesbezogene Zeiten überschreiben das globale Fenster nur für den gewählten Tag.</p>
-          <div id="dailyWorkRows" class="daily-work-rows"></div>
+        <button id="toggleRecurring" class="collapse-toggle" type="button">▼ Feste wiederkehrende Termine</button>
+        <div id="recurringPanel">
+          <p class="hint">Neue Zeile über „+ Hinzufügen“, bei Bedarf wieder entfernen.</p>
+          <div class="button-row compact">
+            <button id="addRecurringBtn" class="secondary" type="button">+ Hinzufügen</button>
+          </div>
+          <div id="recurringRows" class="rows"></div>
         </div>
       </section>
 
-      <section class="card">
-        <h2>Feste wiederkehrende Termine</h2>
-        <p class="hint">Nur befüllte Zeilen werden angezeigt. Neue Zeile über „+ Hinzufügen“.</p>
-        <div class="button-row compact">
-          <button id="addRecurringBtn" class="secondary" type="button">+ Hinzufügen</button>
+      <section class="card collapsible-card">
+        <button id="toggleVariable" class="collapse-toggle" type="button">▼ Variable Termine (aktuelle Woche)</button>
+        <div id="variablePanel">
+          <p class="hint">Neue Zeile über „+ Hinzufügen“, bei Bedarf wieder entfernen.</p>
+          <div class="button-row compact">
+            <button id="addVariableBtn" class="secondary" type="button">+ Hinzufügen</button>
+          </div>
+          <div id="variableRows" class="rows"></div>
         </div>
-        <div id="recurringRows" class="rows"></div>
-      </section>
-
-      <section class="card">
-        <h2>Variable Termine (aktuelle Woche)</h2>
-        <p class="hint">Nur befüllte Zeilen werden angezeigt. Neue Zeile über „+ Hinzufügen“.</p>
-        <div class="button-row compact">
-          <button id="addVariableBtn" class="secondary" type="button">+ Hinzufügen</button>
-        </div>
-        <div id="variableRows" class="rows"></div>
       </section>
 
       <section class="card">
